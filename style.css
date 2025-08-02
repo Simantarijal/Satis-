@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Bouncy Ball Sandbox</title>
+
+    <style>
+
+        * {
+
+            margin: 0;
+
+            padding: 0;
+
+            box-sizing: border-box;
+
+        }
+
+        
+
+        body {
+
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+
+            font-family: 'Arial', sans-serif;
+
+            overflow: hidden;
+
+            touch-action: none;
+
+        }
+
+        
+
+        #gameCanvas {
+
+            display: block;
+
+            background: rgba(255, 255, 255, 0.1);
+
+            backdrop-filter: blur(10px);
+
+            border-radius: 20px;
+
+            margin: 10px;
+
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+
+        }
+
+        
+
+        .controls {
+
+            position: absolute;
+
+            top: 20px;
+
+            left: 20px;
+
+            right: 20px;
+
+            display: flex;
+
+            gap: 15px;
+
+            flex-wrap: wrap;
+
+            z-index: 10;
+
+        }
+
+        
+
+        .control-btn {
+
+            padding: 12px 20px;
+
+            background: rgba(255, 255, 255, 0.2);
+
+            border: none;
+
+            border-radius: 25px;
+
+            color: white;
+
+            font-weight: bold;
+
+            cursor: pointer;
+
+            backdrop-filter: blur(10px);
+
+            transition: all 0.3s ease;
+
+            touch-action: manipulation;
+
+            user-select: none;
+
+        }
+
+        
+
+        .control-btn:active {
+
+            transform: scale(0.95);
+
+            background: rgba(255, 255, 255, 0.3);
+
+        }
+
+        
+
+        .gravity-slider {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 10px;
+
+            background: rgba(255, 255, 255, 0.2);
+
+            padding: 10px 15px;
+
+            border-radius: 25px;
+
+            backdrop-filter: blur(10px);
+
+        }
+
+        
+
+        .gravity-slider label {
+
+            color: white;
+
+            font-size: 14px;
+
+            font-weight: bold;
+
+        }
+
+        
+
+        .gravity-slider input {
+
+            width: 80px;
+
+        }
+
+        
+
+        .stats {
+
+            position: absolute;
+
+            bottom: 20px;
+
+            left: 20px;
+
+            color: white;
+
+            background: rgba(0, 0, 0, 0.3);
+
+            padding: 10px 15px;
+
+            border-radius: 15px;
+
+            backdrop-filter: blur(10px);
+
+            font-size: 14px;
+
+        }
+
+        
+
+        @media (max-width: 600px) {
+
+            .controls {
+
+                flex-direction: column;
+
+                align-items: flex-start;
+
+            }
+
+            
+
+            .control-btn {
+
+                padding: 10px 16px;
+
+                font-size: 14px;
+
+            }
+
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+    <div class="controls">
+
+        <button class="control-btn" onclick="clearBalls()">Clear All</button>
+
+        <button class="control-btn" onclick="togglePause()">Pause</button>
+
+        <button class="control-btn" onclick="addRandomBalls()">Rain Mode</button>
+
+        <button class="control-btn" onclick="toggleSandMode()">Sand Mode</button>
+
+        <div class="gravity-slider">
+
+            <label>Gravity:</label>
+
+            <input type="range" id="gravitySlider" min="0.1" max="2" step="0.1" value="0.8" onchange="updateGravity()">
+
+        </div>
+
+    </div>
+
+    
+
+    <canvas id="gameCanvas"></canvas>
+
+    
+
+    <div class="stats">
+
+        <div>Balls: <span id="ballCount">0</span></div>
+
+        <div>Sand: <span id="sandCount">0</span></div>
+
+        <div>Tap for balls • Sand mode for particles</div>
+
+    </div>
+
+    <script>
+
+        const canvas = document.getElementById('gameCanvas');
+
+        const ctx = canvas.getContext('2d');
+
+        const ballCountEl = document.getElementById('ballCount');
+
+        const sandCountEl = document.getElementById('sandCount');
+
+        
+
+        // Set canvas size
+
+        function resizeCanvas() {
+
+            canvas.width = window.innerWidth - 20;
+
+            canvas.height = window.innerHeight - 20;
+
+        }
+
+        resizeCanvas();
+
+        window.addEventListener('resize', resizeCanvas);
+
+        
+
+        let balls = [];
+
+        let gravity = 0.8;
+
+        let isPaused = false;
+
+        let rainMode = false;
+
+        let sandMode = false;
+
+        let sandParticles = [];
+
+        
+
+        class SandParticle {
+
+            constructor(x, y) {
+
+                this.x = x;
+
+                this.y = y;
+
+                this.vx = (Math.random() - 0.5) * 2;
+
+                this.vy = Math.random() * 2 + 1;
+
+                this.size = Math.random() * 3 + 1;
+
+                this.color = this.getRandomSandColor();
+
+                this.settled = false;
+
+                this.life = 1.0;
+
+            }
+
+            
+
+            getRandomSandColor() {
+
+                const sandColors = [
+
+                    '#f4a261', '#e76f51', '#e9c46a', '#2a9d8f',
+
+                    '#264653', '#f77f00', '#fcbf49', '#d4a574',
+
+                    '#8b5a3c', '#a0522d', '#daa520', '#cd853f'
+
+                ];
+
+                return sandColors[Math.floor(Math.random() * sandColors.length)];
+
+            }
+
+            
+
+            update() {
+
+                if (isPaused || this.settled) return;
+
+                
+
+                this.vy += gravity * 0.3; // Sand falls slower than balls
+
+                this.x += this.vx;
+
+                this.y += this.vy;
+
+                
+
+                // Check collision with canvas bounds
+
+                if (this.x <= 0 || this.x >= canvas.width) {
+
+                    this.vx = 0;
+
+                    this.x = Math.max(0, Math.min(canvas.width, this.x));
+
+                }
+
+                
+
+                if (this.y >= canvas.height - this.size) {
+
+                    this.y = canvas.height - this.size;
+
+                    this.settled = true;
+
+                    this.vx = 0;
+
+                    this.vy = 0;
+
+                }
+
+                
+
+                // Check collision with other settled sand particles
+
+                sandParticles.forEach(other => {
+
+                    if (other !== this && other.settled) {
+
+                        const dx = this.x - other.x;
+
+                        const dy = this.y - other.y;
+
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+
+                        const minDistance = this.size + other.size;
+
+                        
+
+                        if (distance < minDistance && this.y >= other.y - minDistance) {
+
+                            // Settle on top of other particle
+
+                            this.y = other.y - minDistance;
+
+                            this.settled = true;
+
+                            this.vx = 0;
+
+                            this.vy = 0;
+
+                        }
+
+                    }
+
+                });
+
+                
+
+                // Friction
+
+                this.vx *= 0.98;
+
+                
+
+                // Check if particle should settle
+
+                if (Math.abs(this.vx) < 0.1 && Math.abs(this.vy) < 0.1) {
+
+                    this.settled = true;
+
+                }
+
+            }
+
+            
+
+            draw() {
+
+                ctx.save();
+
+                ctx.globalAlpha = this.life;
+
+                ctx.fillStyle = this.color;
+
+                ctx.beginPath();
+
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+
+                ctx.fill();
+
+                
+
+                // Add subtle highlight
+
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+
+                ctx.beginPath();
+
+                ctx.arc(this.x - this.size/3, this.y - this.size/3, this.size/3, 0, Math.PI * 2);
+
+                ctx.fill();
+
+                ctx.restore();
+
+            }
+
+        }
+
+        
+
+        class Ball {
+
+            constructor(x, y) {
+
+                this.x = x;
+
+                this.y = y;
+
+                this.radius = Math.random() * 20 + 10;
+
+                this.vx = (Math.random() - 0.5) * 10;
+
+                this.vy = (Math.random() - 0.5) * 5;
+
+                this.color = this.getRandomColor();
+
+                this.bounce = 0.8;
+
+                this.friction = 0.99;
+
+                this.trail = [];
+
+            }
+
+            
+
+            getRandomColor() {
+
+                const colors = [
+
+                    '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', 
+
+                    '#ffeaa7', '#dda0dd', '#98d8c8', '#f7dc6f',
+
+                    '#bb6bd9', '#ff7675', '#74b9ff', '#00b894'
+
+                ];
+
+                return colors[Math.floor(Math.random() * colors.length)];
+
+            }
+
+            
+
+            update() {
+
+                if (isPaused) return;
+
+                
+
+                // Add to trail
+
+                this.trail.push({x: this.x, y: this.y});
+
+                if (this.trail.length > 8) {
+
+                    this.trail.shift();
+
+                }
+
+                
+
+                // Apply gravity
+
+                this.vy += gravity;
+
+                
+
+                // Update position
+
+                this.x += this.vx;
+
+                this.y += this.vy;
+
+                
+
+                // Bounce off walls
+
+                if (this.x + this.radius > canvas.width) {
+
+                    this.x = canvas.width - this.radius;
+
+                    this.vx *= -this.bounce;
+
+                }
+
+                if (this.x - this.radius < 0) {
+
+                    this.x = this.radius;
+
+                    this.vx *= -this.bounce;
+
+                }
+
+                if (this.y + this.radius > canvas.height) {
+
+                    this.y = canvas.height - this.radius;
+
+                    this.vy *= -this.bounce;
+
+                }
+
+                if (this.y - this.radius < 0) {
+
+                    this.y = this.radius;
+
+                    this.vy *= -this.bounce;
+
+                }
+
+                
+
+                // Apply friction
+
+                this.vx *= this.friction;
+
+                this.vy *= this.friction;
+
+                
+
+                // Ball-to-ball collision
+
+                balls.forEach(other => {
+
+                    if (other !== this) {
+
+                        const dx = other.x - this.x;
+
+                        const dy = other.y - this.y;
+
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+
+                        const minDistance = this.radius + other.radius;
+
+                        
+
+                        if (distance < minDistance) {
+
+                            // Simple collision response
+
+                            const angle = Math.atan2(dy, dx);
+
+                            const targetX = this.x + Math.cos(angle) * minDistance;
+
+                            const targetY = this.y + Math.sin(angle) * minDistance;
+
+                            const ax = (targetX - other.x) * 0.1;
+
+                            const ay = (targetY - other.y) * 0.1;
+
+                            
+
+                            this.vx -= ax;
+
+                            this.vy -= ay;
+
+                            other.vx += ax;
+
+                            other.vy += ay;
+
+                        }
+
+                    }
+
+                });
+
+            }
+
+            
+
+            draw() {
+
+                // Draw trail
+
+                this.trail.forEach((point, i) => {
+
+                    const alpha = (i + 1) / this.trail.length * 0.3;
+
+                    const size = this.radius * (i + 1) / this.trail.length * 0.5;
+
+                    ctx.globalAlpha = alpha;
+
+                    ctx.fillStyle = this.color;
+
+                    ctx.beginPath();
+
+                    ctx.arc(point.x, point.y, size, 0, Math.PI * 2);
+
+                    ctx.fill();
+
+                });
+
+                
+
+                ctx.globalAlpha = 1;
+
+                
+
+                // Draw main ball with gradient
+
+                const gradient = ctx.createRadialGradient(
+
+                    this.x - this.radius/3, this.y - this.radius/3, 0,
+
+                    this.x, this.y, this.radius
+
+                );
+
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+
+                gradient.addColorStop(1, this.color);
+
+                
+
+                ctx.fillStyle = gradient;
+
+                ctx.beginPath();
+
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+
+                ctx.fill();
+
+                
+
+                // Add shine effect
+
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+
+                ctx.beginPath();
+
+                ctx.arc(this.x - this.radius/3, this.y - this.radius/3, this.radius/4, 0, Math.PI * 2);
+
+                ctx.fill();
+
+            }
+
+        }
+
+        
+
+        function addSandParticles(x, y, count = 5) {
+
+            for (let i = 0; i < count; i++) {
+
+                if (sandParticles.length < 500) { // Limit for performance
+
+                    const offsetX = (Math.random() - 0.5) * 20;
+
+                    const offsetY = (Math.random() - 0.5) * 20;
+
+                    sandParticles.push(new SandParticle(x + offsetX, y + offsetY));
+
+                }
+
+            }
+
+            updateParticleCount();
+
+        }
+
+        
+
+        function addBall(x, y) {
+
+            if (balls.length < 100) { // Limit for performance
+
+                balls.push(new Ball(x, y));
+
+                updateBallCount();
+
+            }
+
+        }
+
+        
+
+        function clearBalls() {
+
+            balls = [];
+
+            sandParticles = [];
+
+            updateBallCount();
+
+            updateParticleCount();
+
+        }
+
+        
+
+        function togglePause() {
+
+            isPaused = !isPaused;
+
+            const btn = document.querySelector('[onclick="togglePause()"]');
+
+            btn.textContent = isPaused ? 'Resume' : 'Pause';
+
+        }
+
+        
+
+        function addRandomBalls() {
+
+            if (sandMode) {
+
+                sandMode = false;
+
+                const btn = document.querySelector('[onclick="addRandomBalls()"]');
+
+                btn.textContent = 'Rain Mode';
+
+            }
+
+            rainMode = !rainMode;
+
+            const btn = document.querySelector('[onclick="addRandomBalls()"]');
+
+            btn.textContent = rainMode ? 'Stop Rain' : 'Rain Mode';
+
+        }
+
+        
+
+        function toggleSandMode() {
+
+            if (rainMode) {
+
+                rainMode = false;
+
+                const rainBtn = document.querySelector('[onclick="addRandomBalls()"]');
+
+                rainBtn.textContent = 'Rain Mode';
+
+            }
+
+            sandMode = !sandMode;
+
+            const btn = document.querySelector('[onclick="toggleSandMode()"]');
+
+            btn.textContent = sandMode ? 'Stop Sand' : 'Sand Mode';
+
+        }
+
+        
+
+        function updateGravity() {
+
+            gravity = parseFloat(document.getElementById('gravitySlider').value);
+
+        }
+
+        
+
+        function updateBallCount() {
+
+            ballCountEl.textContent = balls.length;
+
+        }
+
+        
+
+        function updateParticleCount() {
+
+            sandCountEl.textContent = sandParticles.length;
+
+        }
+
+        
+
+        // Touch and mouse events
+
+        function getEventPos(e) {
+
+            const rect = canvas.getBoundingClientRect();
+
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+            return {
+
+                x: clientX - rect.left,
+
+                y: clientY - rect.top
+
+            };
+
+        }
+
+        
+
+        canvas.addEventListener('touchstart', (e) => {
+
+            e.preventDefault();
+
+            const pos = getEventPos(e);
+
+            if (sandMode) {
+
+                addSandParticles(pos.x, pos.y, 8);
+
+            } else {
+
+                addBall(pos.x, pos.y);
+
+            }
+
+        });
+
+        
+
+        canvas.addEventListener('click', (e) => {
+
+            const pos = getEventPos(e);
+
+            if (sandMode) {
+
+                addSandParticles(pos.x, pos.y, 8);
+
+            } else {
+
+                addBall(pos.x, pos.y);
+
+            }
+
+        });
+
+        
+
+        // Game loop
+
+        function gameLoop() {
+
+            // Clear canvas with fade effect
+
+            ctx.fillStyle = 'rgba(102, 126, 234, 0.1)';
+
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            
+
+            // Add rain mode balls
+
+            if (rainMode && balls.length < 50 && Math.random() < 0.3) {
+
+                addBall(Math.random() * canvas.width, -20);
+
+            }
+
+            
+
+            // Add sand mode particles
+
+            if (sandMode && sandParticles.length < 300 && Math.random() < 0.6) {
+
+                addSandParticles(Math.random() * canvas.width, -10, 3);
+
+            }
+
+            
+
+            // Update and draw sand particles first (so they appear behind balls)
+
+            sandParticles.forEach((particle, index) => {
+
+                particle.update();
+
+                particle.draw();
+
+                
+
+                // Remove particles that have been settled for too long
+
+                if (particle.settled && Math.random() < 0.001) {
+
+                    sandParticles.splice(index, 1);
+
+                }
+
+            });
+
+            
+
+            // Update and draw balls
+
+            balls.forEach((ball, index) => {
+
+                ball.update();
+
+                ball.draw();
+
+                
+
+                // Remove balls that are too slow and at bottom
+
+                if (ball.y > canvas.height - ball.radius - 5 && 
+
+                    Math.abs(ball.vx) < 0.1 && Math.abs(ball.vy) < 0.1 && 
+
+                    balls.length > 20) {
+
+                    balls.splice(index, 1);
+
+                    updateBallCount();
+
+                }
+
+            });
+
+            
+
+            requestAnimationFrame(gameLoop);
+
+        }
+
+        
+
+        // Start the game
+
+        gameLoop();
+
+        updateBallCount();
+
+        
+
+        // Add some initial balls
+
+        setTimeout(() => {
+
+            for (let i = 0; i < 5; i++) {
+
+                addBall(
+
+                    Math.random() * (canvas.width - 100) + 50,
+
+                    Math.random() * 100 + 50
+
+                );
+
+            }
+
+        }, 500);
+
+    </script>
+
+</body>
+
+</html>
